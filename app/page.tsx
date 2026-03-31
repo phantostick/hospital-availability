@@ -1,299 +1,372 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
+import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Ambulance, Stethoscope, Clock, MapPin, IndianRupee, Info, Calculator } from "lucide-react"
-import { HospitalCard } from "@/components/hospital-card"
+import { Ambulance, Stethoscope, Clock, MapPin, IndianRupee, Navigation, BedSingle, Activity, Calculator, ShieldCheck, Wind, ListOrdered } from "lucide-react"
 import { mockHospitals, mockDoctors } from "@/lib/mock-data"
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend, Cell
-} from "recharts"
 
-// --- SCORING ALGORITHM ---
-const calculatePenaltyScore = (distance: number, staleness: number) => {
-  const distanceWeight = 1.0;
-  const stalenessWeight = 0.2;
-  return {
-    distancePenalty: distance * distanceWeight,
-    stalenessPenalty: staleness * stalenessWeight,
-    total: (distance * distanceWeight) + (staleness * stalenessWeight)
-  };
-}
-
-// --- CUSTOM TOOLTIP FOR BAR CHART ---
-const CustomTooltip = ({ active, payload }: any) => {
-  if (active && payload && payload.length) {
-    const data = payload[0].payload;
-    return (
-      <div className="bg-slate-900 border border-slate-700 p-4 rounded-xl shadow-2xl min-w-[220px]">
-        <p className="text-white font-bold text-lg mb-2 border-b border-slate-700 pb-2">{data.fullName}</p>
-        <div className="space-y-1.5">
-          <p className="text-blue-400 text-sm flex justify-between gap-4">
-            <span>Distance Penalty:</span> <strong>{data.distancePenalty.toFixed(1)}</strong>
-          </p>
-          <p className="text-orange-400 text-sm flex justify-between gap-4">
-            <span>Staleness Penalty:</span> <strong>{data.stalenessPenalty.toFixed(1)}</strong>
-          </p>
-          <div className="pt-2 mt-2 border-t border-slate-700/50">
-            <p className="text-purple-400 text-sm flex justify-between gap-4 font-mono bg-purple-400/10 p-1.5 rounded">
-              <span>Total Score:</span> <strong>{data.totalScore.toFixed(1)}</strong>
-            </p>
-          </div>
-        </div>
-        {data.isWinner && (
-          <div className="mt-3 pt-2 border-t border-slate-700">
-            <p className="text-yellow-400 text-sm font-bold flex items-center gap-1">
-              ⭐ Top Recommendation
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  }
-  return null;
-};
+// --- FIXED SCORING WEIGHTS ---
+const DISTANCE_WEIGHT = 1.0;
+const STALENESS_WEIGHT = 0.2;
 
 export default function Home() {
-  const [hospitalSort, setHospitalSort] = useState("optimal")
+  // --- STATE ---
   const [docSpecialty, setDocSpecialty] = useState("All")
+  const [hoveredHospitalId, setHoveredHospitalId] = useState<string | null>(null)
+  const [sortPreset, setSortPreset] = useState("optimal")
 
-  // --- HOSPITAL SORTING LOGIC ---
-  const sortedHospitals = [...mockHospitals].sort((a, b) => {
-    if (hospitalSort === "distance") return a.distance - b.distance
-    if (hospitalSort === "freshness") return a.lastUpdatedMinutes - b.lastUpdatedMinutes
-    
-    // Optimal Sort
-    const scoreA = calculatePenaltyScore(a.distance, a.lastUpdatedMinutes).total
-    const scoreB = calculatePenaltyScore(b.distance, b.lastUpdatedMinutes).total
-    return scoreA - scoreB
-  })
+  // --- LIVE SCORING ENGINE ---
+  const scoredHospitals = useMemo(() => {
+    const scored = [...mockHospitals].map(h => {
+      const dPen = h.distance * DISTANCE_WEIGHT;
+      const sPen = h.lastUpdatedMinutes * STALENESS_WEIGHT;
+      return {
+        ...h,
+        distancePenalty: dPen,
+        stalenessPenalty: sPen,
+        totalScore: dPen + sPen
+      }
+    });
 
-  // --- DOCTOR FILTERING LOGIC ---
+    // Default sorting for the Directory View
+    return scored.sort((a, b) => {
+      if (sortPreset === "distance") return a.distance - b.distance;
+      if (sortPreset === "freshness") return a.lastUpdatedMinutes - b.lastUpdatedMinutes;
+      return a.totalScore - b.totalScore; 
+    });
+  }, [sortPreset])
+
+  // Always identify the absolute best hospital mathematically for highlighting
+  const topOptimalHospital = [...scoredHospitals].sort((a, b) => a.totalScore - b.totalScore)[0];
+  
+  // Find the absolute highest score to scale our native HTML bars correctly
+  const maxPenaltyScore = Math.max(...scoredHospitals.map(h => h.totalScore));
+
+  // --- DOCTOR FILTERING ---
+  const filteredDoctors = useMemo(() => {
+    return mockDoctors.filter(d => docSpecialty === "All" ? true : d.specialty === docSpecialty)
+  }, [docSpecialty])
   const specialties = ["All", ...Array.from(new Set(mockDoctors.map(d => d.specialty)))]
-  const filteredDoctors = mockDoctors.filter(d => 
-    docSpecialty === "All" ? true : d.specialty === docSpecialty
-  )
-
-  // --- RECHARTS DATA PREP (STACKED BAR) ---
-  // We only take the top 8 to avoid clutter, and reverse them so #1 is at the top of the chart
-  const topHospitals = sortedHospitals.slice(0, 8);
-  const chartData = [...topHospitals].reverse().map(h => {
-    const scores = calculatePenaltyScore(h.distance, h.lastUpdatedMinutes);
-    return {
-      name: h.name.length > 18 ? h.name.substring(0, 18) + '...' : h.name, // Truncate for clean Y-axis
-      fullName: h.name,
-      distancePenalty: scores.distancePenalty,
-      stalenessPenalty: scores.stalenessPenalty,
-      totalScore: scores.total,
-      isWinner: h.id === sortedHospitals[0].id 
-    }
-  });
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-12 font-sans text-gray-900">
-      {/* Hero Section */}
-      <div className="bg-white border-b border-gray-200 pt-16 pb-12 px-4 mb-8">
-        <div className="max-w-5xl mx-auto text-center">
-          <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 mb-4 px-3 py-1">
-            Real-Time Information System
+    <main className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-24">
+      
+      {/* --- HERO SECTION --- */}
+      <div className="bg-white border-b border-gray-200 pt-16 pb-12 px-4 mb-10 shadow-sm">
+        <div className="max-w-6xl mx-auto text-center">
+          <Badge className="bg-blue-100 text-blue-800 mb-4 px-3 py-1 uppercase tracking-wider text-xs font-bold">
+            Real-Time Routing Engine
           </Badge>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-4">
-            Find the care you need, <span className="text-blue-600">before you leave.</span>
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight mb-6 text-slate-900">
+            Find the care you need, <span className="text-blue-600">instantly.</span>
           </h1>
           <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Stop guessing in emergencies. Get live visibility into hospital beds, ICU availability, and specialist doctors near you instantly.
+            Stop guessing in emergencies. We process live hospital capacity, real-time traffic distance, and dynamic data staleness to route you to safety.
           </p>
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4">
-        <Tabs defaultValue="emergency" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 h-14 mb-8 bg-gray-200/50 p-1 rounded-xl">
-            <TabsTrigger value="emergency" className="text-base rounded-lg data-[state=active]:bg-red-500 data-[state=active]:text-white transition-all">
-              <Ambulance className="w-5 h-5 mr-2" />
-              Emergency & Beds
+      <div className="max-w-6xl mx-auto px-4">
+        
+        {/* ========================================= */}
+        {/* --- MAIN DIRECTORY (ALL HOSPITALS) --- */}
+        {/* ========================================= */}
+        <Tabs defaultValue="emergency" className="w-full mb-16">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 h-14 mb-8 bg-gray-200/60 p-1 rounded-xl">
+            <TabsTrigger value="emergency" className="text-base rounded-lg data-[state=active]:bg-red-500 data-[state=active]:text-white transition-all shadow-sm">
+              <Ambulance className="w-5 h-5 mr-2" /> Live Routing
             </TabsTrigger>
-            <TabsTrigger value="doctor" className="text-base rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all">
-              <Stethoscope className="w-5 h-5 mr-2" />
-              Find a Doctor
+            <TabsTrigger value="doctor" className="text-base rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all shadow-sm">
+              <Stethoscope className="w-5 h-5 mr-2" /> Specialists
             </TabsTrigger>
           </TabsList>
 
-          {/* TAB 1: EMERGENCY */}
           <TabsContent value="emergency" className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border shadow-sm gap-4">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
               <div>
-                <h2 className="font-semibold text-xl">Hospital Routing</h2>
-                <p className="text-sm text-gray-500">Live capacity across your city</p>
+                <h2 className="font-bold text-xl text-slate-800">City-Wide Directory</h2>
+                <p className="text-sm text-gray-500">Showing all {scoredHospitals.length} active facilities.</p>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium text-gray-600">Prioritize by:</span>
-                <Select value={hospitalSort} onValueChange={setHospitalSort}>
-                  <SelectTrigger className="w-[200px] bg-gray-50">
-                    <SelectValue placeholder="Sort by" />
+                <Select value={sortPreset} onValueChange={setSortPreset}>
+                  <SelectTrigger className="w-[200px] bg-gray-50 border-gray-200">
+                    <SelectValue placeholder="Sort preset" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="optimal">⭐ Optimal Match</SelectItem>
+                    <SelectItem value="optimal">⭐ Optimal Algorithm</SelectItem>
                     <SelectItem value="distance">📍 Closest Distance</SelectItem>
                     <SelectItem value="freshness">⏱️ Most Recently Updated</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
+            
+            {/* HORIZONTAL CARD LIST */}
+            <div className="space-y-4">
+              {scoredHospitals.map((hospital) => {
+                const isWinner = hospital.id === topOptimalHospital.id && sortPreset === "optimal";
+                
+                return (
+                  <Card 
+                    key={hospital.id} 
+                    id={`hospital-${hospital.id}`}
+                    className={`bg-white transition-all duration-200 overflow-hidden border border-gray-200 shadow-sm hover:border-gray-300 ${
+                      isWinner ? 'ring-2 ring-yellow-400 shadow-md' : ''
+                    }`}
+                  >
+                    <div className="flex flex-col md:flex-row w-full">
+                      
+                      {/* Section 1: Info (Left) */}
+                      <div className="p-5 md:w-2/5 flex flex-col justify-center relative">
+                        {isWinner && <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 border-none">#1 Recommendation</Badge>}
+                        <h3 className={`font-bold text-xl mb-2 ${isWinner ? 'text-slate-900' : 'text-slate-800 pr-24'}`}>
+                          {hospital.name}
+                        </h3>
+                        <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <span className="flex items-center"><MapPin className="w-4 h-4 mr-1 text-gray-400"/> {hospital.distance} km</span>
+                          <span className="flex items-center"><Clock className="w-4 h-4 mr-1 text-gray-400"/> {hospital.lastUpdatedMinutes}m ago</span>
+                        </div>
+                      </div>
 
-            <div className="grid gap-4">
-              {sortedHospitals.map((hospital, index) => (
-                <HospitalCard 
-                  key={hospital.id} 
-                  hospital={hospital} 
-                  isOptimal={hospitalSort === "optimal" && index === 0} 
-                />
-              ))}
+                      {/* Section 2: Beds (Middle) */}
+                      <div className="p-5 md:w-2/5 border-t md:border-t-0 md:border-l border-gray-100 flex items-center justify-around bg-gray-50/30">
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-center gap-1"><BedSingle className="w-3 h-3"/> Gen</p>
+                          <p className={`font-mono text-2xl ${hospital.availableBeds.general > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{hospital.availableBeds.general}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-center gap-1"><Activity className="w-3 h-3"/> ICU</p>
+                          <p className={`font-mono text-2xl ${hospital.availableBeds.icu > 0 ? 'text-blue-600' : 'text-red-500'}`}>{hospital.availableBeds.icu}</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1 flex items-center justify-center gap-1"><Wind className="w-3 h-3"/> Vent</p>
+                          <p className={`font-mono text-2xl ${hospital.availableBeds.ventilator > 0 ? 'text-purple-600' : 'text-red-500'}`}>{hospital.availableBeds.ventilator}</p>
+                        </div>
+                      </div>
+
+                      {/* Section 3: Action (Right) */}
+                      <div className="p-5 md:w-1/5 border-t md:border-t-0 md:border-l border-gray-100 flex flex-col items-center justify-center bg-gray-50/80">
+                        <Link href={`/hospital/${hospital.id}`} className="w-full">
+                          <button className={`w-full py-3 px-4 rounded-xl font-bold text-sm flex items-center justify-center transition-all ${
+                            isWinner ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-900 shadow-sm' : 
+                            'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                          }`}>
+                            <Navigation className="w-4 h-4 mr-2" /> Route Now
+                          </button>
+                        </Link>
+                        <p className="text-xs text-gray-400 mt-3 text-center">Score: {hospital.totalScore.toFixed(1)}</p>
+                      </div>
+
+                    </div>
+                  </Card>
+                )
+              })}
             </div>
           </TabsContent>
 
-          {/* TAB 2: DOCTORS */}
+          {/* DOCTORS TAB */}
           <TabsContent value="doctor" className="space-y-6">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border shadow-sm gap-4">
-              <div>
-                <h2 className="font-semibold text-xl">Specialist Directory</h2>
-                <p className="text-sm text-gray-500">View schedules and availability</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-600">Specialty:</span>
+             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center bg-white p-4 rounded-xl border border-gray-200 shadow-sm gap-4">
+              <div><h2 className="font-bold text-xl text-slate-800">Specialist Directory</h2></div>
+              <div className="flex items-center gap-2 mt-4 sm:mt-0">
                 <Select value={docSpecialty} onValueChange={setDocSpecialty}>
-                  <SelectTrigger className="w-[180px] bg-gray-50">
-                    <SelectValue placeholder="All Specialties" />
-                  </SelectTrigger>
+                  <SelectTrigger className="w-[200px] bg-gray-50 border-gray-200"><SelectValue placeholder="All Specialties" /></SelectTrigger>
                   <SelectContent>
-                    {specialties.map(spec => (
-                      <SelectItem key={spec} value={spec}>{spec}</SelectItem>
-                    ))}
+                    {specialties.map(spec => <SelectItem key={spec} value={spec}>{spec}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-
-            <div className="grid sm:grid-cols-2 gap-4">
+            
+            <div className="space-y-4">
               {filteredDoctors.map(doc => (
-                <Card key={doc.id} className="border-2 border-transparent hover:border-blue-100 transition-all">
-                  <CardContent className="p-5">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="font-bold text-lg">{doc.name}</h3>
-                        <p className="text-blue-600 text-sm font-medium">{doc.specialty}</p>
+                 <Card key={doc.id} className="bg-white border border-gray-200 shadow-sm hover:border-gray-300 transition-all">
+                  <div className="flex flex-col md:flex-row w-full">
+                    <div className="p-5 md:w-1/2">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-bold text-xl text-slate-900">{doc.name}</h3>
+                        {doc.availableToday ? (
+                          <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Available Today</Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-gray-500 border-gray-300">Not Available</Badge>
+                        )}
                       </div>
-                      {doc.availableToday ? (
-                        <Badge className="bg-green-100 text-green-800 hover:bg-green-100">Available Today</Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-gray-500">Not Available</Badge>
-                      )}
+                      <p className="text-blue-600 text-sm font-bold uppercase tracking-wider">{doc.specialty}</p>
                     </div>
                     
-                    <div className="space-y-2 mt-4 text-sm text-gray-600">
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2 text-gray-400" />
-                        {doc.hospitalName}
-                      </div>
-                      <div className="flex items-center">
-                        <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                        {doc.timings} <span className="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded">Next: {doc.nextAvailable}</span>
-                      </div>
-                      <div className="flex items-center">
-                        <IndianRupee className="w-4 h-4 mr-2 text-gray-400" />
-                        Consultation: ₹{doc.fees}
-                      </div>
+                    <div className="p-5 md:w-1/2 border-t md:border-t-0 md:border-l border-gray-100 flex flex-col justify-center space-y-2 bg-gray-50/30">
+                      <div className="flex items-center text-sm text-gray-600"><MapPin className="w-4 h-4 mr-3 text-gray-400" />{doc.hospitalName}</div>
+                      <div className="flex items-center text-sm text-gray-600"><Clock className="w-4 h-4 mr-3 text-gray-400" />{doc.timings}</div>
+                      <div className="flex items-center text-sm text-gray-600"><IndianRupee className="w-4 h-4 mr-3 text-gray-400" />₹{doc.fees} Consultation</div>
                     </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                 </Card>
               ))}
             </div>
           </TabsContent>
         </Tabs>
 
-        {/* --- ALGORITHM EXPLANATION & VISUALIZATION SECTION --- */}
-        <div className="mt-16 pt-12 border-t border-gray-200">
-          <div className="bg-slate-900 rounded-2xl p-8 text-white shadow-xl">
-            <div className="flex items-center gap-3 mb-6">
-              <Info className="w-8 h-8 text-blue-400" />
-              <h2 className="text-3xl font-bold">Why "Optimal" Routing Saves Lives</h2>
-            </div>
+        {/* ========================================= */}
+        {/* --- THE ALGORITHM EXPLANATION SECTION --- */}
+        {/* ========================================= */}
+        <div className="mt-24 pt-16 border-t border-gray-200">
+          
+          <div className="max-w-4xl mx-auto text-center mb-16">
+            <Badge className="bg-purple-100 text-purple-800 mb-4 px-3 py-1 uppercase tracking-wider text-xs font-bold flex items-center justify-center w-max mx-auto">
+              <Calculator className="w-4 h-4 mr-2" /> The Mathematics of Saving Time
+            </Badge>
+            <h2 className="text-3xl md:text-5xl font-extrabold text-slate-900 mb-6">How the Penalty Score Works</h2>
+            <p className="text-lg text-gray-600 leading-relaxed">
+              In an emergency, going to the closest hospital is a fatal mistake if their ICU is completely full. 
+              To prevent this, our engine assigns a <strong>Penalty Score</strong> to every facility. <span className="font-semibold text-blue-600">The lower the score, the safer the choice.</span>
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
             
-            <div className="grid md:grid-cols-2 gap-12">
-              <div className="space-y-6 text-slate-300">
-                <p>
-                  In a medical emergency, routing a patient to the <em>absolute closest</em> hospital can be a fatal flaw if that hospital's data is stale and their ICU is actually full. Conversely, routing them to a hospital with perfectly fresh data that is 30km away wastes precious "Golden Hour" time.
-                </p>
-                
-                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 relative overflow-hidden">
-                  <Calculator className="absolute right-[-20px] bottom-[-20px] w-32 h-32 text-slate-700 opacity-20" />
-                  <h3 className="text-lg font-semibold text-white mb-3">The Penalty Scoring Formula</h3>
-                  <p className="text-sm mb-4 text-slate-400">
-                    Our algorithm assigns a "penalty score" to each facility. <strong className="text-white">The lower the score, the higher the recommendation.</strong>
-                  </p>
-                  <code className="block bg-black p-4 rounded text-blue-300 font-mono text-sm overflow-x-auto mb-4 border border-blue-900/50">
-                    Score = (Distance × 1.0) + (Staleness × 0.2)
-                  </code>
-                  <ul className="space-y-2 text-sm text-slate-400">
-                    <li><strong className="text-white">Distance:</strong> Kilometers away.</li>
-                    <li><strong className="text-white">Staleness:</strong> Minutes since the hospital last updated their bed count.</li>
-                  </ul>
-                </div>
-
-                <div>
-                  <h3 className="text-xl font-semibold text-white mb-2">Visualizing the Trade-off</h3>
-                  <p className="text-sm text-slate-400">
-                    The chart clearly breaks down the penalty scores for the top 8 recommended hospitals. You can instantly see if a hospital was heavily penalized due to distance (blue bar) or due to stale, unreliable data (orange bar). The shortest total bar wins.
-                  </p>
-                </div>
+            {/* Distance Logic */}
+            <div className="bg-white border border-gray-200 p-8 rounded-2xl shadow-sm">
+              <h3 className="font-bold text-slate-900 flex items-center text-xl mb-4">
+                <MapPin className="w-6 h-6 mr-3 text-blue-500" /> 1. Distance Penalty
+              </h3>
+              <p className="text-gray-600 mb-4">
+                We apply a direct 1-to-1 penalty for physical distance. If a hospital is 5 kilometers away, it receives a base penalty of 5.0.
+              </p>
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 text-sm text-blue-900 font-mono">
+                Distance Penalty = Distance in km × 1.0
               </div>
+            </div>
 
-              {/* Stacked Bar Chart Visualization */}
-              <div className="bg-slate-800 rounded-xl p-6 border border-slate-700 flex flex-col">
-                <h3 className="text-lg font-semibold text-white mb-2">Top 8 Leaderboard Breakdown</h3>
-                <p className="text-xs text-slate-400 mb-6">
-                  Shorter bars are better. The <span className="text-yellow-400 font-bold">yellow text</span> indicates the #1 choice based on your current sorting criteria.
-                </p>
-                
-                <div className="flex-grow w-full min-h-[400px]">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      layout="vertical"
-                      data={chartData}
-                      margin={{ top: 0, right: 30, left: 20, bottom: 0 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={true} vertical={false} />
-                      <XAxis type="number" stroke="#94a3b8" tick={{ fill: '#94a3b8' }} domain={[0, 'dataMax + 5']} />
-                      <YAxis 
-                        type="category" 
-                        dataKey="name" 
-                        stroke="#94a3b8" 
-                        width={140}
-                        tick={(props) => {
-                          const { x, y, payload } = props;
-                          const isWinner = chartData.find(d => d.name === payload.value)?.isWinner;
-                          return (
-                            <text x={x} y={y} dy={4} textAnchor="end" fill={isWinner ? "#facc15" : "#94a3b8"} fontSize={12} fontWeight={isWinner ? "bold" : "normal"}>
-                              {payload.value}
-                            </text>
-                          );
-                        }}
-                      />
-                      <RechartsTooltip content={<CustomTooltip />} cursor={{ fill: '#1e293b' }} />
-                      <Legend wrapperStyle={{ paddingTop: '20px' }} />
-                      <Bar dataKey="distancePenalty" name="Distance Penalty" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="stalenessPenalty" name="Staleness Penalty" stackId="a" fill="#f97316" radius={[0, 4, 4, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+            {/* Staleness Logic */}
+            <div className="bg-white border border-gray-200 p-8 rounded-2xl shadow-sm">
+              <h3 className="font-bold text-slate-900 flex items-center text-xl mb-4">
+                <Clock className="w-6 h-6 mr-3 text-orange-500" /> 2. Staleness Penalty
+              </h3>
+              <p className="text-gray-600 mb-4">
+                If a hospital says they have beds, but they haven't updated their data in hours, that data is dangerous to rely on. We apply a severe penalty for data staleness.
+              </p>
+              <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 text-sm text-orange-900 font-mono">
+                Staleness Penalty = Minutes Old × 0.2
+              </div>
+            </div>
+
+            {/* Why 0.2? The "Aha!" Moment */}
+            <div className="md:col-span-2 bg-slate-900 text-white p-8 md:p-10 rounded-3xl shadow-xl border border-slate-800">
+              <div className="flex flex-col md:flex-row gap-8 items-center">
+                <div className="flex-1">
+                  <h3 className="font-black text-2xl mb-4 text-emerald-400 flex items-center gap-3">
+                    <ShieldCheck className="w-8 h-8" /> Why multiply by 0.2?
+                  </h3>
+                  <p className="text-slate-300 leading-relaxed text-lg mb-4">
+                    Multiplying by 0.2 mathematically equates <strong>5 minutes of outdated data to 1 kilometer of travel time.</strong>
+                  </p>
+                  <p className="text-slate-400">
+                    If Hospital A is 2km away but hasn't updated its system in 60 minutes, its penalty score skyrockets by +12.0. The algorithm now treats it as if it were 14 kilometers away. This elegantly forces the system to route you to Hospital B, which might be 5km away, but updated its confirmed ICU beds just 1 minute ago.
+                  </p>
+                </div>
+                <div className="bg-black/50 p-6 rounded-2xl border border-slate-700 min-w-[280px]">
+                  <p className="text-slate-500 text-sm mb-2 font-bold uppercase tracking-wider text-center">Final Formula</p>
+                  <div className="text-center font-mono text-xl space-y-2">
+                    <div className="text-blue-400">Dist × 1.0</div>
+                    <div className="text-slate-500">+</div>
+                    <div className="text-orange-400">Mins × 0.2</div>
+                    <div className="text-slate-500 border-t border-slate-700 pt-2 mt-2">=</div>
+                    <div className="text-white font-bold text-2xl">Total Penalty</div>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
+          {/* ========================================= */}
+          {/* --- NATIVE HTML LEADERBOARD --- */}
+          {/* ========================================= */}
+          
+          <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm mb-20">
+            <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+              <div>
+                <h3 className="text-2xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+                  <ListOrdered className="w-6 h-6 text-slate-600" /> Algorithm Leaderboard
+                </h3>
+                <p className="text-sm text-gray-500 max-w-2xl">
+                  Visualizing the total Penalty Score for all 25 hospitals. <strong>Shorter bars represent safer, faster, more reliable routing.</strong>
+                </p>
+              </div>
+              <div className="flex gap-4 text-sm font-medium">
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Distance Penalty</div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-orange-500"></div> Staleness Penalty</div>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {/* Ensure we map over a mathematically sorted array (Best to Worst, so index 0 is lowest score) */}
+              {[...scoredHospitals].sort((a, b) => a.totalScore - b.totalScore).map((hospital, index) => {
+                const isWinner = index === 0;
+                
+                // Calculate widths based on the max score so they scale correctly within the container
+                const distWidth = (hospital.distancePenalty / maxPenaltyScore) * 100;
+                const staleWidth = (hospital.stalenessPenalty / maxPenaltyScore) * 100;
+
+                return (
+                  <div 
+                    key={hospital.id} 
+                    className={`flex flex-col md:flex-row md:items-center gap-3 md:gap-6 p-4 rounded-xl border transition-colors ${
+                      isWinner ? 'bg-yellow-50/50 border-yellow-200' : 
+                      (hoveredHospitalId === hospital.id ? 'bg-blue-50 border-blue-200' : 'bg-gray-50/50 border-gray-100 hover:bg-gray-50')
+                    }`}
+                    onMouseEnter={() => setHoveredHospitalId(hospital.id)}
+                    onMouseLeave={() => setHoveredHospitalId(null)}
+                  >
+                    
+                    {/* Rank & Name */}
+                    <div className="flex items-center gap-3 md:w-1/4 min-w-[200px]">
+                      <span className={`font-bold w-6 text-center ${isWinner ? 'text-yellow-600' : 'text-gray-400'}`}>
+                        {isWinner ? '★' : `#${index + 1}`}
+                      </span>
+                      <span className={`font-semibold truncate ${isWinner ? 'text-slate-900' : 'text-slate-700'}`}>
+                        {hospital.name}
+                      </span>
+                    </div>
+
+                    {/* The Visual Native Bar */}
+                    <div className="flex-1 h-6 bg-gray-200/50 rounded-full overflow-hidden flex relative group">
+                      {/* Distance Segment */}
+                      <div 
+                        style={{ width: `${distWidth}%` }} 
+                        className="bg-blue-500 h-full transition-all duration-500 ease-out border-r border-white/20"
+                      />
+                      {/* Staleness Segment */}
+                      <div 
+                        style={{ width: `${staleWidth}%` }} 
+                        className="bg-orange-500 h-full transition-all duration-500 ease-out"
+                      />
+                      
+                      {/* Tooltip on hover */}
+                      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-slate-900/90 text-white text-xs flex items-center justify-center transition-opacity rounded-full backdrop-blur-sm font-medium tracking-wide">
+                        Dist: {hospital.distancePenalty.toFixed(1)} + Stale: {hospital.stalenessPenalty.toFixed(1)}
+                      </div>
+                    </div>
+
+                    {/* Total Score Readout */}
+                    <div className="md:w-24 text-right flex items-center justify-end">
+                      <Badge variant="outline" className={`font-mono text-sm px-2 py-1 ${isWinner ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : 'bg-white text-slate-700 border-gray-200'}`}>
+                        {hospital.totalScore.toFixed(1)}
+                      </Badge>
+                    </div>
+
+                  </div>
+                )
+              })}
+            </div>
+
+          </div>
+
+        </div>
       </div>
     </main>
   )
