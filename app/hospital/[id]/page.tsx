@@ -1,6 +1,6 @@
 'use client';
 
-import { hospitals } from '@/lib/mock-data';
+import { mockHospitals } from '@/lib/mock-data';
 import { BedStatus } from '@/components/bed-status';
 import { EmergencySOS } from '@/components/emergency-sos';
 import { Navbar } from '@/components/navbar';
@@ -13,7 +13,7 @@ import { useParams } from 'next/navigation';
 
 export default function HospitalDetail() {
   const params = useParams();
-  const hospital = hospitals.find(h => h.id === params.id);
+  const hospital = mockHospitals.find(h => h.id === params.id);
 
   if (!hospital) {
     return (
@@ -31,8 +31,9 @@ export default function HospitalDetail() {
     );
   }
 
-  const totalBedsAvailable = hospital.beds.generalAvailable + hospital.beds.icuAvailable + hospital.beds.ventilatorAvailable;
-  const totalBeds = hospital.beds.general + hospital.beds.icu + hospital.beds.ventilator;
+  const totalBedsAvailable = hospital.availableBeds.general + hospital.availableBeds.icu + hospital.availableBeds.ventilator;
+  const totalBeds = hospital.totalBeds.general + hospital.totalBeds.icu + hospital.totalBeds.ventilator;
+  const isFresh = hospital.lastUpdatedMinutes < 10;
 
   return (
     <>
@@ -52,12 +53,10 @@ export default function HospitalDetail() {
                   <CardTitle className="text-3xl text-gray-900">{hospital.name}</CardTitle>
                   <div className="flex items-center gap-2 text-gray-600 mt-2">
                     <MapPin className="w-5 h-5" />
-                    <span>{hospital.address}</span>
+                    <span>{hospital.location} • {hospital.distance} km away</span>
                   </div>
                 </div>
-                {hospital.emergencyServices && (
-                  <Badge className="bg-red-100 text-red-700 border-0 text-sm">24/7 Emergency</Badge>
-                )}
+                <Badge className="bg-red-100 text-red-700 border-0 text-sm">24/7 Emergency</Badge>
               </div>
             </CardHeader>
 
@@ -65,11 +64,19 @@ export default function HospitalDetail() {
               {/* Contact Info */}
               <div className="flex items-center gap-2 text-gray-700">
                 <Phone className="w-5 h-5 text-blue-600" />
-                <span className="font-medium">{hospital.phone}</span>
+                <span className="font-medium">{hospital.contact}</span>
+              </div>
+
+              {/* Data Freshness Indicator */}
+              <div className="flex items-center text-sm font-medium mt-1">
+                <Clock className={`h-4 w-4 mr-2 ${isFresh ? 'text-green-600' : 'text-orange-500'}`} />
+                <span className={isFresh ? 'text-green-600' : 'text-orange-500'}>
+                  Data updated {hospital.lastUpdatedMinutes} mins ago
+                </span>
               </div>
 
               {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t">
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t mt-4">
                 <div className="space-y-1">
                   <p className="text-sm text-gray-600">Total Available</p>
                   <p className="text-2xl font-bold text-green-600">{totalBedsAvailable}/{totalBeds}</p>
@@ -92,24 +99,24 @@ export default function HospitalDetail() {
               <div>
                 <BedStatus
                   type="General Ward Beds"
-                  available={hospital.beds.generalAvailable}
-                  total={hospital.beds.general}
+                  available={hospital.availableBeds.general}
+                  total={hospital.totalBeds.general}
                 />
               </div>
 
               <div>
                 <BedStatus
                   type="ICU Beds"
-                  available={hospital.beds.icuAvailable}
-                  total={hospital.beds.icu}
+                  available={hospital.availableBeds.icu}
+                  total={hospital.totalBeds.icu}
                 />
               </div>
 
               <div>
                 <BedStatus
                   type="Ventilator Support"
-                  available={hospital.beds.ventilatorAvailable}
-                  total={hospital.beds.ventilator}
+                  available={hospital.availableBeds.ventilator}
+                  total={hospital.totalBeds.ventilator}
                 />
               </div>
             </CardContent>
@@ -125,7 +132,7 @@ export default function HospitalDetail() {
               <div className="flex items-center gap-2">
                 <Clock className="w-5 h-5 text-blue-600" />
                 <span className="text-gray-700">
-                  {hospital.emergencyServices ? '24/7 Emergency Services Available' : 'Regular Hours Only'}
+                  24/7 Emergency Services Available
                 </span>
               </div>
             </CardContent>
@@ -144,7 +151,8 @@ export default function HospitalDetail() {
         </div>
       </main>
 
-      <EmergencySOS />
+      {/* Make sure EmergencySOS doesn't rely on the old mock data! */}
+      <EmergencySOS /> 
     </>
   );
 }
