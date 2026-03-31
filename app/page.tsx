@@ -123,7 +123,7 @@ export default function Home() {
                       
                       {/* Section 1: Info (Left) */}
                       <div className="p-5 md:w-2/5 flex flex-col justify-center relative">
-                        {isWinner && <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 border-none">#1 Recommendation</Badge>}
+                        {isWinner && <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 border-none"></Badge>}
                         <h3 className={`font-bold text-xl mb-2 ${isWinner ? 'text-slate-900' : 'text-slate-800 pr-24'}`}>
                           {hospital.name}
                         </h3>
