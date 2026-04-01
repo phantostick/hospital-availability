@@ -137,7 +137,7 @@ export default function Home() {
         <Tabs defaultValue="emergency" className="w-full mb-16">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 h-14 mb-8 bg-gray-200/60 p-1 rounded-xl">
             <TabsTrigger value="emergency" className="text-base rounded-lg data-[state=active]:bg-red-500 data-[state=active]:text-white transition-all shadow-sm">
-              <Ambulance className="w-5 h-5 mr-2" /> Live Routing
+              <Ambulance className="w-5 h-5 mr-2" /> Emergency
             </TabsTrigger>
             <TabsTrigger value="doctor" className="text-base rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all shadow-sm">
               <Stethoscope className="w-5 h-5 mr-2" /> Specialists
