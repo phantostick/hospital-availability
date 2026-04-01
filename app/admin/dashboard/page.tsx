@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { mockHospitals } from '@/lib/mock-data';
 import { BedStatus } from '@/components/bed-status';
-import { Edit2, Save, X, AlertCircle, Clock } from 'lucide-react';
+import { Edit2, Save, X, AlertCircle, Clock, LogOut } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -18,11 +18,17 @@ export default function AdminDashboard() {
   const [hospitalData, setHospitalData] = useState<any[]>([]);
   const [editValues, setEditValues] = useState<any>(null);
   const [now, setNow] = useState(Date.now());
+  const [loggedInId, setLoggedInId] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
-    const isAuth = localStorage.getItem('adminAuth');
-    if (!isAuth) router.push('/admin/login');
+    const authId = localStorage.getItem('adminAuth');
+    if (!authId) {
+      router.push('/admin/login');
+      return;
+    }
+    
+    setLoggedInId(authId);
 
     // Initialize data from LocalStorage or fallback to Mock Data
     const stored = localStorage.getItem('liveHospitals');
@@ -57,7 +63,7 @@ export default function AdminDashboard() {
         ? { 
             ...h, 
             availableBeds: editValues,
-            lastUpdatedAt: Date.now() // Set exact exact timestamp of update!
+            lastUpdatedAt: Date.now() // Set exact timestamp of update!
           }
         : h
     );
@@ -78,84 +84,106 @@ export default function AdminDashboard() {
     setEditValues((prev: any) => ({ ...prev, [field]: safeValue }));
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('adminAuth');
+    router.push('/admin/login');
+  };
+
   if (!mounted) return null; // Prevent hydration mismatch
+
+  // Filter hospitals based on login
+  const visibleHospitals = hospitalData.filter(h => 
+    loggedInId === 'admin' || h.id === loggedInId
+  );
 
   return (
     <>
       <Navbar />
       <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 py-8 font-sans">
         <div className="max-w-6xl mx-auto px-4 space-y-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900">Admin Control Center</h1>
-            <p className="text-slate-600 mt-2">Manage live hospital telemetry</p>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold text-slate-900">
+                {loggedInId === 'admin' ? 'Super Admin Dashboard' : 'Hospital Portal'}
+              </h1>
+              <p className="text-slate-600 mt-2">Manage live hospital telemetry</p>
+            </div>
+            <Button variant="outline" onClick={handleLogout} className="gap-2">
+              <LogOut className="w-4 h-4" /> Sign Out
+            </Button>
           </div>
 
           <div className="space-y-4">
-            {hospitalData.map(hospital => {
-              // Calculate live staleness
-              const stalenessMinutes = Math.floor((now - hospital.lastUpdatedAt) / 60000);
-              const isStale = stalenessMinutes > 60;
+            {visibleHospitals.length === 0 ? (
+              <Card className="p-8 text-center text-slate-500">
+                No hospital found for your credentials.
+              </Card>
+            ) : (
+              visibleHospitals.map(hospital => {
+                // Calculate live staleness
+                const stalenessMinutes = Math.floor((now - hospital.lastUpdatedAt) / 60000);
+                const isStale = stalenessMinutes > 60;
 
-              return (
-                <Card key={hospital.id} className="border-slate-200 shadow-sm">
-                  <CardHeader className="pb-3 border-b border-slate-100">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div>
-                        <CardTitle className="text-lg text-slate-900">{hospital.name}</CardTitle>
-                        <div className="flex items-center mt-1 space-x-2 text-sm">
-                          <Clock className={`w-4 h-4 ${isStale ? 'text-red-500' : 'text-emerald-500'}`} />
-                          <span className={`${isStale ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
-                            Last updated {stalenessMinutes} {stalenessMinutes === 1 ? 'minute' : 'minutes'} ago
-                          </span>
+                return (
+                  <Card key={hospital.id} className="border-slate-200 shadow-sm">
+                    <CardHeader className="pb-3 border-b border-slate-100">
+                      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div>
+                          <CardTitle className="text-lg text-slate-900">{hospital.name}</CardTitle>
+                          <div className="flex items-center mt-1 space-x-2 text-sm">
+                            <Clock className={`w-4 h-4 ${isStale ? 'text-red-500' : 'text-emerald-500'}`} />
+                            <span className={`${isStale ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
+                              Last updated {stalenessMinutes} {stalenessMinutes === 1 ? 'minute' : 'minutes'} ago
+                            </span>
+                          </div>
                         </div>
+                        {editingId !== hospital.id && (
+                          <Button variant="outline" size="sm" onClick={() => handleEdit(hospital.id)} className="gap-2">
+                            <Edit2 className="w-4 h-4" /> Edit Capacity
+                          </Button>
+                        )}
                       </div>
-                      {editingId !== hospital.id && (
-                        <Button variant="outline" size="sm" onClick={() => handleEdit(hospital.id)} className="gap-2">
-                          <Edit2 className="w-4 h-4" /> Edit Capacity
-                        </Button>
-                      )}
-                    </div>
-                  </CardHeader>
+                    </CardHeader>
 
-                  <CardContent className="pt-4">
-                    {editingId === hospital.id && editValues ? (
-                      <div className="space-y-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                    <CardContent className="pt-4">
+                      {editingId === hospital.id && editValues ? (
+                        <div className="space-y-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">General Beds</label>
+                              <Input type="number" min="0" max={hospital.totalBeds.general} value={editValues.general} onChange={(e) => handleInputChange('general', parseInt(e.target.value))} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">ICU Beds</label>
+                              <Input type="number" min="0" max={hospital.totalBeds.icu} value={editValues.icu} onChange={(e) => handleInputChange('icu', parseInt(e.target.value))} />
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-slate-700">Ventilators</label>
+                              <Input type="number" min="0" max={hospital.totalBeds.ventilator} value={editValues.ventilator} onChange={(e) => handleInputChange('ventilator', parseInt(e.target.value))} />
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3">
+                            <Button onClick={() => handleSave(hospital.id)} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+                              <Save className="w-4 h-4" /> Save & Reset Timer
+                            </Button>
+                            <Button variant="outline" onClick={handleCancel} size="sm" className="gap-2">
+                              <X className="w-4 h-4" /> Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                          {/* Inputs omitted for brevity, keeping your exact input logic from earlier */}
-                           <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">General Beds</label>
-                            <Input type="number" min="0" max={hospital.totalBeds.general} value={editValues.general} onChange={(e) => handleInputChange('general', parseInt(e.target.value))} />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">ICU Beds</label>
-                            <Input type="number" min="0" max={hospital.totalBeds.icu} value={editValues.icu} onChange={(e) => handleInputChange('icu', parseInt(e.target.value))} />
-                          </div>
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-slate-700">Ventilators</label>
-                            <Input type="number" min="0" max={hospital.totalBeds.ventilator} value={editValues.ventilator} onChange={(e) => handleInputChange('ventilator', parseInt(e.target.value))} />
-                          </div>
+                          <BedStatus type="General Beds" available={hospital.availableBeds.general} total={hospital.totalBeds.general} />
+                          <BedStatus type="ICU Beds" available={hospital.availableBeds.icu} total={hospital.totalBeds.icu} />
+                          <BedStatus type="Ventilator Support" available={hospital.availableBeds.ventilator} total={hospital.totalBeds.ventilator} />
                         </div>
-
-                        <div className="flex gap-3">
-                          <Button onClick={() => handleSave(hospital.id)} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                            <Save className="w-4 h-4" /> Save & Reset Timer
-                          </Button>
-                          <Button variant="outline" onClick={handleCancel} size="sm" className="gap-2">
-                            <X className="w-4 h-4" /> Cancel
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        <BedStatus type="General Beds" available={hospital.availableBeds.general} total={hospital.totalBeds.general} />
-                        <BedStatus type="ICU Beds" available={hospital.availableBeds.icu} total={hospital.totalBeds.icu} />
-                        <BedStatus type="Ventilator Support" available={hospital.availableBeds.ventilator} total={hospital.totalBeds.ventilator} />
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              )
-            })}
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })
+            )}
           </div>
           
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">

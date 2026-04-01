@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { mockHospitals } from '@/lib/mock-data';
 import { BedStatus } from '@/components/bed-status';
 import { EmergencySOS } from '@/components/emergency-sos';
@@ -13,7 +14,34 @@ import { useParams } from 'next/navigation';
 
 export default function HospitalDetail() {
   const params = useParams();
-  const hospital = mockHospitals.find(h => h.id === params.id);
+  const [mounted, setMounted] = useState(false);
+  const [hospital, setHospital] = useState<any>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    setMounted(true);
+    
+    // Load live data
+    const stored = localStorage.getItem('liveHospitals');
+    let dataList = mockHospitals;
+    if (stored) {
+      dataList = JSON.parse(stored);
+    } else {
+      dataList = mockHospitals.map(h => ({
+        ...h,
+        lastUpdatedAt: Date.now() - (h.lastUpdatedMinutes * 60000)
+      }));
+      localStorage.setItem('liveHospitals', JSON.stringify(dataList));
+    }
+
+    const found = dataList.find((h: any) => h.id === params.id);
+    setHospital(found);
+
+    const timer = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(timer);
+  }, [params.id]);
+
+  if (!mounted) return null;
 
   if (!hospital) {
     return (
@@ -31,9 +59,14 @@ export default function HospitalDetail() {
     );
   }
 
+  // Calculate live minutes
+  const liveMins = hospital.lastUpdatedAt 
+    ? Math.max(0, Math.floor((now - hospital.lastUpdatedAt) / 60000)) 
+    : hospital.lastUpdatedMinutes;
+
   const totalBedsAvailable = hospital.availableBeds.general + hospital.availableBeds.icu + hospital.availableBeds.ventilator;
   const totalBeds = hospital.totalBeds.general + hospital.totalBeds.icu + hospital.totalBeds.ventilator;
-  const isFresh = hospital.lastUpdatedMinutes < 10;
+  const isFresh = liveMins < 10;
 
   return (
     <>
@@ -69,9 +102,9 @@ export default function HospitalDetail() {
 
               {/* Data Freshness Indicator */}
               <div className="flex items-center text-sm font-medium mt-1">
-                <Clock className={`h-4 w-4 mr-2 ${isFresh ? 'text-green-600' : 'text-orange-500'}`} />
+                <Clock className={`h-4 w-4 mr-2 ${isFresh ? 'text-green-600' : 'text-orange-500'} ${liveMins === 0 ? 'animate-pulse' : ''}`} />
                 <span className={isFresh ? 'text-green-600' : 'text-orange-500'}>
-                  Data updated {hospital.lastUpdatedMinutes} mins ago
+                  {liveMins === 0 ? 'Data updated just now' : `Data updated ${liveMins} mins ago`}
                 </span>
               </div>
 
@@ -150,8 +183,7 @@ export default function HospitalDetail() {
           </div>
         </div>
       </main>
-
-      {/* Make sure EmergencySOS doesn't rely on the old mock data! */}
+      
       <EmergencySOS /> 
     </>
   );

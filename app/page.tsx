@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import Link from "next/link"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Ambulance, Stethoscope, Clock, MapPin, IndianRupee, Navigation, BedSingle, Activity, Calculator, ShieldCheck, Wind, ListOrdered } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Ambulance, Stethoscope, Clock, MapPin, IndianRupee, Navigation, BedSingle, Activity, Calculator, ShieldCheck, Wind, ListOrdered, Lock } from "lucide-react"
 import { mockHospitals, mockDoctors } from "@/lib/mock-data"
 
 // --- FIXED SCORING WEIGHTS ---
@@ -15,17 +16,65 @@ const STALENESS_WEIGHT = 0.2;
 
 export default function Home() {
   // --- STATE ---
+  const [mounted, setMounted] = useState(false);
   const [docSpecialty, setDocSpecialty] = useState("All")
   const [hoveredHospitalId, setHoveredHospitalId] = useState<string | null>(null)
   const [sortPreset, setSortPreset] = useState("optimal")
+  const [liveHospitals, setLiveHospitals] = useState<any[]>(mockHospitals)
+  const [now, setNow] = useState(Date.now())
+
+  // --- HYDRATION & LIVE SYNC ---
+  useEffect(() => {
+    setMounted(true);
+    
+    // Load live data from Admin edits or initialize it
+    const stored = localStorage.getItem('liveHospitals');
+    if (stored) {
+      setLiveHospitals(JSON.parse(stored));
+    } else {
+      const initialData = mockHospitals.map(h => ({
+        ...h,
+        lastUpdatedAt: Date.now() - (h.lastUpdatedMinutes * 60000)
+      }));
+      setLiveHospitals(initialData);
+      localStorage.setItem('liveHospitals', JSON.stringify(initialData));
+    }
+
+    // Tick every minute to recalculate staleness live
+    const timer = setInterval(() => {
+      setNow(Date.now());
+      // Re-fetch from local storage periodically in case admin edits in another tab
+      const updatedStored = localStorage.getItem('liveHospitals');
+      if (updatedStored) setLiveHospitals(JSON.parse(updatedStored));
+    }, 60000);
+    
+    // Initial fetch to catch instant multi-tab updates if user focuses back on window
+    const handleFocus = () => {
+      const activeStored = localStorage.getItem('liveHospitals');
+      if (activeStored) setLiveHospitals(JSON.parse(activeStored));
+      setNow(Date.now());
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, []);
 
   // --- LIVE SCORING ENGINE ---
   const scoredHospitals = useMemo(() => {
-    const scored = [...mockHospitals].map(h => {
+    const scored = [...liveHospitals].map(h => {
+      // Calculate live minutes since last admin update
+      const actualMins = h.lastUpdatedAt ? Math.floor((now - h.lastUpdatedAt) / 60000) : h.lastUpdatedMinutes;
+      const safeMins = Math.max(0, actualMins);
+
       const dPen = h.distance * DISTANCE_WEIGHT;
-      const sPen = h.lastUpdatedMinutes * STALENESS_WEIGHT;
+      const sPen = safeMins * STALENESS_WEIGHT;
+      
       return {
         ...h,
+        lastUpdatedMinutes: safeMins, // Override with live calculated value
         distancePenalty: dPen,
         stalenessPenalty: sPen,
         totalScore: dPen + sPen
@@ -38,25 +87,35 @@ export default function Home() {
       if (sortPreset === "freshness") return a.lastUpdatedMinutes - b.lastUpdatedMinutes;
       return a.totalScore - b.totalScore; 
     });
-  }, [sortPreset])
+  }, [liveHospitals, sortPreset, now])
 
-  // Always identify the absolute best hospital mathematically for highlighting
-  const topOptimalHospital = [...scoredHospitals].sort((a, b) => a.totalScore - b.totalScore)[0];
-  
-  // Find the absolute highest score to scale our native HTML bars correctly
-  const maxPenaltyScore = Math.max(...scoredHospitals.map(h => h.totalScore));
-
-  // --- DOCTOR FILTERING ---
+  // Doctor list remains static based on mock data for now
   const filteredDoctors = useMemo(() => {
     return mockDoctors.filter(d => docSpecialty === "All" ? true : d.specialty === docSpecialty)
   }, [docSpecialty])
   const specialties = ["All", ...Array.from(new Set(mockDoctors.map(d => d.specialty)))]
 
+  // Prevent hydration mismatch by holding render until client loads
+  if (!mounted) return null;
+
+  const topOptimalHospital = [...scoredHospitals].sort((a, b) => a.totalScore - b.totalScore)[0];
+  const maxPenaltyScore = Math.max(...scoredHospitals.map(h => h.totalScore));
+
   return (
-    <main className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-24">
+    <main className="min-h-screen bg-gray-50 text-gray-900 font-sans pb-24 relative">
       
+      {/* --- TOP NAV / ADMIN LINK --- */}
+      <div className="absolute top-4 right-4 md:top-6 md:right-8 z-10">
+        <Link href="/admin/login">
+          <Button variant="outline" className="bg-white/80 backdrop-blur-sm border-gray-200 text-gray-700 hover:bg-gray-100 hover:text-blue-700 transition-colors shadow-sm">
+            <Lock className="w-4 h-4 mr-2" />
+            Hospital Portal
+          </Button>
+        </Link>
+      </div>
+
       {/* --- HERO SECTION --- */}
-      <div className="bg-white border-b border-gray-200 pt-16 pb-12 px-4 mb-10 shadow-sm">
+      <div className="bg-white border-b border-gray-200 pt-20 pb-12 px-4 mb-10 shadow-sm">
         <div className="max-w-6xl mx-auto text-center">
           <Badge className="bg-blue-100 text-blue-800 mb-4 px-3 py-1 uppercase tracking-wider text-xs font-bold">
             Real-Time Routing Engine
@@ -78,7 +137,7 @@ export default function Home() {
         <Tabs defaultValue="emergency" className="w-full mb-16">
           <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 h-14 mb-8 bg-gray-200/60 p-1 rounded-xl">
             <TabsTrigger value="emergency" className="text-base rounded-lg data-[state=active]:bg-red-500 data-[state=active]:text-white transition-all shadow-sm">
-              <Ambulance className="w-5 h-5 mr-2" /> Emergency
+              <Ambulance className="w-5 h-5 mr-2" /> Live Routing
             </TabsTrigger>
             <TabsTrigger value="doctor" className="text-base rounded-lg data-[state=active]:bg-blue-600 data-[state=active]:text-white transition-all shadow-sm">
               <Stethoscope className="w-5 h-5 mr-2" /> Specialists
@@ -123,13 +182,18 @@ export default function Home() {
                       
                       {/* Section 1: Info (Left) */}
                       <div className="p-5 md:w-2/5 flex flex-col justify-center relative">
-                        {isWinner && <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 border-none"></Badge>}
+                        {isWinner && <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800 border-none">#1 Recommendation</Badge>}
                         <h3 className={`font-bold text-xl mb-2 ${isWinner ? 'text-slate-900' : 'text-slate-800 pr-24'}`}>
                           {hospital.name}
                         </h3>
                         <div className="flex items-center gap-4 text-sm text-gray-500">
                           <span className="flex items-center"><MapPin className="w-4 h-4 mr-1 text-gray-400"/> {hospital.distance} km</span>
-                          <span className="flex items-center"><Clock className="w-4 h-4 mr-1 text-gray-400"/> {hospital.lastUpdatedMinutes}m ago</span>
+                          <span className="flex items-center">
+                            <Clock className={`w-4 h-4 mr-1 ${hospital.lastUpdatedMinutes === 0 ? 'text-emerald-500 animate-pulse' : 'text-gray-400'}`}/> 
+                            <span className={hospital.lastUpdatedMinutes === 0 ? 'text-emerald-600 font-bold' : ''}>
+                              {hospital.lastUpdatedMinutes === 0 ? 'Just now' : `${hospital.lastUpdatedMinutes}m ago`}
+                            </span>
+                          </span>
                         </div>
                       </div>
 
@@ -228,8 +292,6 @@ export default function Home() {
           </div>
 
           <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-16">
-            
-            {/* Distance Logic */}
             <div className="bg-white border border-gray-200 p-8 rounded-2xl shadow-sm">
               <h3 className="font-bold text-slate-900 flex items-center text-xl mb-4">
                 <MapPin className="w-6 h-6 mr-3 text-blue-500" /> 1. Distance Penalty
@@ -242,7 +304,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Staleness Logic */}
             <div className="bg-white border border-gray-200 p-8 rounded-2xl shadow-sm">
               <h3 className="font-bold text-slate-900 flex items-center text-xl mb-4">
                 <Clock className="w-6 h-6 mr-3 text-orange-500" /> 2. Staleness Penalty
@@ -255,7 +316,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Why 0.2? The "Aha!" Moment */}
             <div className="md:col-span-2 bg-slate-900 text-white p-8 md:p-10 rounded-3xl shadow-xl border border-slate-800">
               <div className="flex flex-col md:flex-row gap-8 items-center">
                 <div className="flex-1">
@@ -298,17 +358,15 @@ export default function Home() {
                 </p>
               </div>
               <div className="flex gap-4 text-sm font-medium">
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Distance Penalty</div>
-                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-orange-500"></div> Staleness Penalty</div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500"></div> Distance</div>
+                <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-orange-500"></div> Staleness</div>
               </div>
             </div>
             
             <div className="space-y-3">
-              {/* Ensure we map over a mathematically sorted array (Best to Worst, so index 0 is lowest score) */}
               {[...scoredHospitals].sort((a, b) => a.totalScore - b.totalScore).map((hospital, index) => {
                 const isWinner = index === 0;
                 
-                // Calculate widths based on the max score so they scale correctly within the container
                 const distWidth = (hospital.distancePenalty / maxPenaltyScore) * 100;
                 const staleWidth = (hospital.stalenessPenalty / maxPenaltyScore) * 100;
 
@@ -323,7 +381,6 @@ export default function Home() {
                     onMouseLeave={() => setHoveredHospitalId(null)}
                   >
                     
-                    {/* Rank & Name */}
                     <div className="flex items-center gap-3 md:w-1/4 min-w-[200px]">
                       <span className={`font-bold w-6 text-center ${isWinner ? 'text-yellow-600' : 'text-gray-400'}`}>
                         {isWinner ? '★' : `#${index + 1}`}
@@ -333,26 +390,15 @@ export default function Home() {
                       </span>
                     </div>
 
-                    {/* The Visual Native Bar */}
                     <div className="flex-1 h-6 bg-gray-200/50 rounded-full overflow-hidden flex relative group">
-                      {/* Distance Segment */}
-                      <div 
-                        style={{ width: `${distWidth}%` }} 
-                        className="bg-blue-500 h-full transition-all duration-500 ease-out border-r border-white/20"
-                      />
-                      {/* Staleness Segment */}
-                      <div 
-                        style={{ width: `${staleWidth}%` }} 
-                        className="bg-orange-500 h-full transition-all duration-500 ease-out"
-                      />
+                      <div style={{ width: `${distWidth}%` }} className="bg-blue-500 h-full transition-all duration-500 ease-out border-r border-white/20" />
+                      <div style={{ width: `${staleWidth}%` }} className="bg-orange-500 h-full transition-all duration-500 ease-out" />
                       
-                      {/* Tooltip on hover */}
                       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-slate-900/90 text-white text-xs flex items-center justify-center transition-opacity rounded-full backdrop-blur-sm font-medium tracking-wide">
                         Dist: {hospital.distancePenalty.toFixed(1)} + Stale: {hospital.stalenessPenalty.toFixed(1)}
                       </div>
                     </div>
 
-                    {/* Total Score Readout */}
                     <div className="md:w-24 text-right flex items-center justify-end">
                       <Badge variant="outline" className={`font-mono text-sm px-2 py-1 ${isWinner ? 'bg-yellow-100 text-yellow-800 border-yellow-300' : 'bg-white text-slate-700 border-gray-200'}`}>
                         {hospital.totalScore.toFixed(1)}
@@ -363,7 +409,6 @@ export default function Home() {
                 )
               })}
             </div>
-
           </div>
 
         </div>
