@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { mockHospitals } from '@/lib/mock-data';
 import { BedStatus } from '@/components/bed-status';
-import { Edit2, Save, X, AlertCircle, Clock, LogOut } from 'lucide-react';
+import { Edit2, Save, X, AlertCircle, Clock, LogOut, MapPin, Phone } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminDashboard() {
@@ -27,24 +27,18 @@ export default function AdminDashboard() {
       router.push('/admin/login');
       return;
     }
-    
     setLoggedInId(authId);
-
-    // Initialize data from LocalStorage or fallback to Mock Data
-    const stored = localStorage.getItem('liveHospitals');
+    const stored = localStorage.getItem('liveHospitals_vzg');
     if (stored) {
       setHospitalData(JSON.parse(stored));
     } else {
-      // Map mock data to include absolute timestamps
       const initialData = mockHospitals.map(h => ({
         ...h,
         lastUpdatedAt: Date.now() - (h.lastUpdatedMinutes * 60000)
       }));
       setHospitalData(initialData);
-      localStorage.setItem('liveHospitals', JSON.stringify(initialData));
+      localStorage.setItem('liveHospitals_vzg', JSON.stringify(initialData));
     }
-
-    // Tick every minute to update the "Minutes Ago" display
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
   }, [router]);
@@ -58,20 +52,16 @@ export default function AdminDashboard() {
   };
 
   const handleSave = (hospitalId: string) => {
-    const updatedData = hospitalData.map(h => 
-      h.id === hospitalId 
-        ? { 
-            ...h, 
-            availableBeds: editValues,
-            lastUpdatedAt: Date.now() // Set exact timestamp of update!
-          }
+    const updatedData = hospitalData.map(h =>
+      h.id === hospitalId
+        ? { ...h, availableBeds: editValues, lastUpdatedAt: Date.now() }
         : h
     );
     setHospitalData(updatedData);
-    localStorage.setItem('liveHospitals', JSON.stringify(updatedData));
+    localStorage.setItem('liveHospitals_vzg', JSON.stringify(updatedData));
     setEditingId(null);
     setEditValues(null);
-    toast.success('Hospital capacity updated and timestamp refreshed!');
+    toast.success('Hospital capacity updated!');
   };
 
   const handleCancel = () => {
@@ -89,10 +79,9 @@ export default function AdminDashboard() {
     router.push('/admin/login');
   };
 
-  if (!mounted) return null; // Prevent hydration mismatch
+  if (!mounted) return null;
 
-  // Filter hospitals based on login
-  const visibleHospitals = hospitalData.filter(h => 
+  const visibleHospitals = hospitalData.filter(h =>
     loggedInId === 'admin' || h.id === loggedInId
   );
 
@@ -106,7 +95,7 @@ export default function AdminDashboard() {
               <h1 className="text-3xl font-bold text-slate-900">
                 {loggedInId === 'admin' ? 'Super Admin Dashboard' : 'Hospital Portal'}
               </h1>
-              <p className="text-slate-600 mt-2">Manage live hospital telemetry</p>
+              <p className="text-slate-600 mt-1">Manage live bed availability · Visakhapatnam</p>
             </div>
             <Button variant="outline" onClick={handleLogout} className="gap-2">
               <LogOut className="w-4 h-4" /> Sign Out
@@ -115,21 +104,25 @@ export default function AdminDashboard() {
 
           <div className="space-y-4">
             {visibleHospitals.length === 0 ? (
-              <Card className="p-8 text-center text-slate-500">
-                No hospital found for your credentials.
-              </Card>
+              <Card className="p-8 text-center text-slate-500">No hospital found for your credentials.</Card>
             ) : (
               visibleHospitals.map(hospital => {
-                // Calculate live staleness
                 const stalenessMinutes = Math.floor((now - hospital.lastUpdatedAt) / 60000);
                 const isStale = stalenessMinutes > 60;
-
                 return (
                   <Card key={hospital.id} className="border-slate-200 shadow-sm">
                     <CardHeader className="pb-3 border-b border-slate-100">
                       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                         <div>
                           <CardTitle className="text-lg text-slate-900">{hospital.name}</CardTitle>
+                          <div className="flex items-center gap-4 mt-1">
+                            <span className="flex items-center gap-1 text-xs text-slate-500">
+                              <MapPin className="w-3.5 h-3.5" /> {hospital.location}
+                            </span>
+                            <span className="flex items-center gap-1 text-xs text-slate-500">
+                              <Phone className="w-3.5 h-3.5" /> {hospital.contact}
+                            </span>
+                          </div>
                           <div className="flex items-center mt-1 space-x-2 text-sm">
                             <Clock className={`w-4 h-4 ${isStale ? 'text-red-500' : 'text-emerald-500'}`} />
                             <span className={`${isStale ? 'text-red-600 font-medium' : 'text-slate-500'}`}>
@@ -150,19 +143,18 @@ export default function AdminDashboard() {
                         <div className="space-y-6 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-slate-700">General Beds</label>
+                              <label className="text-sm font-medium text-slate-700">General Beds (max {hospital.totalBeds.general})</label>
                               <Input type="number" min="0" max={hospital.totalBeds.general} value={editValues.general} onChange={(e) => handleInputChange('general', parseInt(e.target.value))} />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-slate-700">ICU Beds</label>
+                              <label className="text-sm font-medium text-slate-700">ICU Beds (max {hospital.totalBeds.icu})</label>
                               <Input type="number" min="0" max={hospital.totalBeds.icu} value={editValues.icu} onChange={(e) => handleInputChange('icu', parseInt(e.target.value))} />
                             </div>
                             <div className="space-y-2">
-                              <label className="text-sm font-medium text-slate-700">Ventilators</label>
+                              <label className="text-sm font-medium text-slate-700">Ventilators (max {hospital.totalBeds.ventilator})</label>
                               <Input type="number" min="0" max={hospital.totalBeds.ventilator} value={editValues.ventilator} onChange={(e) => handleInputChange('ventilator', parseInt(e.target.value))} />
                             </div>
                           </div>
-
                           <div className="flex gap-3">
                             <Button onClick={() => handleSave(hospital.id)} size="sm" className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
                               <Save className="w-4 h-4" /> Save & Reset Timer
@@ -181,17 +173,17 @@ export default function AdminDashboard() {
                       )}
                     </CardContent>
                   </Card>
-                )
+                );
               })
             )}
           </div>
-          
+
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex gap-3">
             <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
             <div>
               <p className="font-medium text-amber-900">Live Sync Active</p>
               <p className="text-sm text-amber-800 mt-1">
-                Updates here are saved to LocalStorage. Open the Main Dashboard in another tab, update a hospital here, and watch it instantly jump to #1 on the leaderboard due to 0m data age.
+                Updates here are saved instantly. Triage patients on the main dashboard will only see hospitals with available beds matching their case.
               </p>
             </div>
           </div>

@@ -2,8 +2,11 @@ export interface Hospital {
   id: string;
   name: string;
   location: string;
-  distance: number; // in km
-  lastUpdatedMinutes: number; // minutes ago
+  lat: number;
+  lng: number;
+  distance: number; // computed at runtime from geolocation
+  lastUpdatedMinutes: number;
+  lastUpdatedAt?: number;
   availableBeds: {
     general: number;
     icu: number;
@@ -15,6 +18,7 @@ export interface Hospital {
     ventilator: number;
   };
   contact: string;
+  specialties: string[];
 }
 
 export interface Doctor {
@@ -29,308 +33,212 @@ export interface Doctor {
   nextAvailable: string;
 }
 
-export interface Hospital {
-  id: string;
-  name: string;
-  location: string;
-  distance: number; // in km
-  lastUpdatedMinutes: number; // minutes ago
-  availableBeds: {
-    general: number;
-    icu: number;
-    ventilator: number;
-  };
-  totalBeds: {
-    general: number;
-    icu: number;
-    ventilator: number;
-  };
-  contact: string;
-}
-
+// Real Visakhapatnam hospitals with actual coordinates
 export const mockHospitals: Hospital[] = [
-  // --- ORIGINAL DATA ---
   {
     id: "h1",
-    name: "City General Hospital",
-    location: "Downtown Medical District",
-    distance: 2.4,
-    lastUpdatedMinutes: 2,
-    availableBeds: { general: 12, icu: 2, ventilator: 0 },
-    totalBeds: { general: 150, icu: 20, ventilator: 10 },
-    contact: "+91 98765 43210"
+    name: "King George Hospital",
+    location: "Maharani Peta, Visakhapatnam",
+    lat: 17.7231,
+    lng: 83.3012,
+    distance: 0,
+    lastUpdatedMinutes: 3,
+    availableBeds: { general: 45, icu: 8, ventilator: 4 },
+    totalBeds: { general: 500, icu: 60, ventilator: 30 },
+    contact: "+91 891 278 0100",
+    specialties: ["cardiac", "neuro", "trauma", "general"]
   },
   {
     id: "h2",
-    name: "St. Jude's Care Center",
-    location: "Westside Suburbs",
-    distance: 5.1,
-    lastUpdatedMinutes: 15,
-    availableBeds: { general: 45, icu: 8, ventilator: 4 },
-    totalBeds: { general: 200, icu: 30, ventilator: 15 },
-    contact: "+91 98765 43211"
+    name: "GITAM Institute of Medical Sciences",
+    location: "Rushikonda, Visakhapatnam",
+    lat: 17.7808,
+    lng: 83.3678,
+    distance: 0,
+    lastUpdatedMinutes: 12,
+    availableBeds: { general: 28, icu: 5, ventilator: 3 },
+    totalBeds: { general: 200, icu: 30, ventilator: 12 },
+    contact: "+91 891 284 0100",
+    specialties: ["cardiac", "general", "trauma"]
   },
   {
     id: "h3",
-    name: "Metro Apex Hospital",
-    location: "Tech Park Road",
-    distance: 1.2,
-    lastUpdatedMinutes: 45, 
-    availableBeds: { general: 0, icu: 1, ventilator: 2 },
-    totalBeds: { general: 100, icu: 15, ventilator: 8 },
-    contact: "+91 98765 43212"
+    name: "Visakha Institute of Medical Sciences (VIMS)",
+    location: "Maharani Peta, Visakhapatnam",
+    lat: 17.7199,
+    lng: 83.2985,
+    distance: 0,
+    lastUpdatedMinutes: 5,
+    availableBeds: { general: 18, icu: 4, ventilator: 2 },
+    totalBeds: { general: 180, icu: 24, ventilator: 10 },
+    contact: "+91 891 256 3000",
+    specialties: ["cardiac", "neuro", "general"]
   },
   {
     id: "h4",
-    name: "Lifeline Super Specialty",
-    location: "North Highway",
-    distance: 3.8,
-    lastUpdatedMinutes: 1, 
-    availableBeds: { general: 8, icu: 4, ventilator: 2 },
-    totalBeds: { general: 120, icu: 25, ventilator: 12 },
-    contact: "+91 98765 43213"
+    name: "Seven Hills Hospital",
+    location: "Rockdale Layout, Visakhapatnam",
+    lat: 17.7268,
+    lng: 83.3185,
+    distance: 0,
+    lastUpdatedMinutes: 8,
+    availableBeds: { general: 32, icu: 9, ventilator: 5 },
+    totalBeds: { general: 250, icu: 40, ventilator: 18 },
+    contact: "+91 891 251 1111",
+    specialties: ["cardiac", "neuro", "trauma", "general"]
   },
   {
     id: "h5",
-    name: "Green Valley Clinic (Stale/Full)",
-    location: "South End Alley",
-    distance: 0.8, 
-    lastUpdatedMinutes: 1440, 
-    availableBeds: { general: 0, icu: 0, ventilator: 0 }, 
-    totalBeds: { general: 50, icu: 5, ventilator: 2 },
-    contact: "+91 98765 43214"
+    name: "Appolo Hospitals Visakhapatnam",
+    location: "Waltair Main Road, Visakhapatnam",
+    lat: 17.7326,
+    lng: 83.3247,
+    distance: 0,
+    lastUpdatedMinutes: 2,
+    availableBeds: { general: 40, icu: 12, ventilator: 6 },
+    totalBeds: { general: 300, icu: 50, ventilator: 20 },
+    contact: "+91 891 670 7777",
+    specialties: ["cardiac", "neuro", "trauma", "general"]
   },
   {
     id: "h6",
-    name: "Pioneer Medical City (Far/Fresh)",
-    location: "Outskirts Ring Road",
-    distance: 28.5, 
-    lastUpdatedMinutes: 0, 
-    availableBeds: { general: 145, icu: 22, ventilator: 18 },
-    totalBeds: { general: 500, icu: 80, ventilator: 40 },
-    contact: "+91 98765 43215"
+    name: "Care Hospital",
+    location: "Ramnagar, Visakhapatnam",
+    lat: 17.7398,
+    lng: 83.3152,
+    distance: 0,
+    lastUpdatedMinutes: 15,
+    availableBeds: { general: 22, icu: 6, ventilator: 2 },
+    totalBeds: { general: 200, icu: 35, ventilator: 14 },
+    contact: "+91 891 666 5555",
+    specialties: ["cardiac", "general"]
   },
-
-  // --- NEW VARYING DATA ---
-
-  // The "Hidden Gem" (Very close, highly fresh, good capacity. Should rank #1 often)
   {
     id: "h7",
-    name: "Sunrise Emergency Center",
-    location: "Central Avenue",
-    distance: 1.5,
-    lastUpdatedMinutes: 3,
-    availableBeds: { general: 18, icu: 4, ventilator: 2 },
-    totalBeds: { general: 60, icu: 10, ventilator: 5 },
-    contact: "+91 98765 43216"
+    name: "Medicover Hospitals",
+    location: "Siripuram, Visakhapatnam",
+    lat: 17.7352,
+    lng: 83.3301,
+    distance: 0,
+    lastUpdatedMinutes: 6,
+    availableBeds: { general: 15, icu: 3, ventilator: 1 },
+    totalBeds: { general: 120, icu: 20, ventilator: 8 },
+    contact: "+91 891 680 0000",
+    specialties: ["general", "trauma"]
   },
-  
-  // The "Deceptive ICU" (Decent score, but literally 0 ICU beds. A good visual edge case for users looking specifically for ICU)
   {
     id: "h8",
-    name: "Hope Community Hospital",
-    location: "Eastside Sector 4",
-    distance: 3.2,
-    lastUpdatedMinutes: 12,
-    availableBeds: { general: 55, icu: 0, ventilator: 0 },
-    totalBeds: { general: 100, icu: 8, ventilator: 4 },
-    contact: "+91 98765 43217"
+    name: "Gayatri Vidya Parishad Hospital",
+    location: "Kommadi, Visakhapatnam",
+    lat: 17.7901,
+    lng: 83.3845,
+    distance: 0,
+    lastUpdatedMinutes: 20,
+    availableBeds: { general: 10, icu: 2, ventilator: 1 },
+    totalBeds: { general: 100, icu: 15, ventilator: 6 },
+    contact: "+91 891 275 0100",
+    specialties: ["general"]
   },
-
-  // The "Overloaded Government Hospital" (Huge total capacity, but almost entirely full, older data)
   {
     id: "h9",
-    name: "State District Hospital",
-    location: "Old City Center",
-    distance: 6.8,
-    lastUpdatedMinutes: 180, // 3 hours old
-    availableBeds: { general: 5, icu: 1, ventilator: 0 },
-    totalBeds: { general: 800, icu: 60, ventilator: 30 },
-    contact: "+91 98765 43218"
+    name: "Bheemunipatnam Government Hospital",
+    location: "Bheemunipatnam, Visakhapatnam",
+    lat: 17.8899,
+    lng: 83.4527,
+    distance: 0,
+    lastUpdatedMinutes: 45,
+    availableBeds: { general: 8, icu: 1, ventilator: 0 },
+    totalBeds: { general: 80, icu: 10, ventilator: 4 },
+    contact: "+91 891 245 0100",
+    specialties: ["general"]
   },
-
-  // The "Suburban Reliable" (Further away, but solidly updated and available)
   {
     id: "h10",
-    name: "Oakwood Healthcare",
-    location: "Suburban Layout Phase 2",
-    distance: 12.4,
-    lastUpdatedMinutes: 8,
-    availableBeds: { general: 32, icu: 5, ventilator: 3 },
-    totalBeds: { general: 150, icu: 20, ventilator: 10 },
-    contact: "+91 98765 43219"
+    name: "Ramakrishna Hospital",
+    location: "Maharanipeta, Visakhapatnam",
+    lat: 17.7215,
+    lng: 83.3028,
+    distance: 0,
+    lastUpdatedMinutes: 10,
+    availableBeds: { general: 25, icu: 5, ventilator: 2 },
+    totalBeds: { general: 150, icu: 25, ventilator: 10 },
+    contact: "+91 891 255 0110",
+    specialties: ["cardiac", "general", "trauma"]
   },
-
-  // The "Traffic Jam" (Close by, but data is dangerously stale)
   {
     id: "h11",
-    name: "Crescent Nursing Home",
-    location: "Market Road",
-    distance: 2.1,
-    lastUpdatedMinutes: 320, // Over 5 hours old
-    availableBeds: { general: 4, icu: 1, ventilator: 1 },
-    totalBeds: { general: 40, icu: 4, ventilator: 2 },
-    contact: "+91 98765 43220"
+    name: "NRI Institute of Medical Sciences",
+    location: "Sangivalasa, Visakhapatnam",
+    lat: 17.8123,
+    lng: 83.4012,
+    distance: 0,
+    lastUpdatedMinutes: 18,
+    availableBeds: { general: 35, icu: 7, ventilator: 3 },
+    totalBeds: { general: 220, icu: 32, ventilator: 12 },
+    contact: "+91 891 278 9000",
+    specialties: ["cardiac", "neuro", "general"]
   },
-
-  // Standard Mid-tier options
   {
     id: "h12",
-    name: "Global Health Institute",
-    location: "Financial District",
-    distance: 8.5,
-    lastUpdatedMinutes: 25,
-    availableBeds: { general: 28, icu: 6, ventilator: 2 },
-    totalBeds: { general: 250, icu: 40, ventilator: 20 },
-    contact: "+91 98765 43221"
+    name: "Surya Hospital",
+    location: "Dwaraka Nagar, Visakhapatnam",
+    lat: 17.7291,
+    lng: 83.3369,
+    distance: 0,
+    lastUpdatedMinutes: 30,
+    availableBeds: { general: 12, icu: 0, ventilator: 0 },
+    totalBeds: { general: 80, icu: 10, ventilator: 4 },
+    contact: "+91 891 256 7890",
+    specialties: ["general"]
   },
   {
     id: "h13",
-    name: "Trinity Multi-Specialty",
-    location: "Lakeview Promenade",
-    distance: 4.7,
-    lastUpdatedMinutes: 5,
-    availableBeds: { general: 14, icu: 2, ventilator: 1 },
-    totalBeds: { general: 90, icu: 12, ventilator: 6 },
-    contact: "+91 98765 43222"
+    name: "Padmavathi Hospital",
+    location: "Seethammadhara, Visakhapatnam",
+    lat: 17.7441,
+    lng: 83.3287,
+    distance: 0,
+    lastUpdatedMinutes: 25,
+    availableBeds: { general: 20, icu: 4, ventilator: 1 },
+    totalBeds: { general: 130, icu: 18, ventilator: 7 },
+    contact: "+91 891 254 3210",
+    specialties: ["general", "trauma"]
   },
   {
     id: "h14",
-    name: "Silver Cross Medical",
-    location: "Industrial Estate Zone",
-    distance: 15.2,
-    lastUpdatedMinutes: 45,
-    availableBeds: { general: 40, icu: 8, ventilator: 5 },
-    totalBeds: { general: 180, icu: 25, ventilator: 10 },
-    contact: "+91 98765 43223"
+    name: "Aditya Hospital",
+    location: "MVP Colony, Visakhapatnam",
+    lat: 17.7517,
+    lng: 83.3432,
+    distance: 0,
+    lastUpdatedMinutes: 14,
+    availableBeds: { general: 18, icu: 3, ventilator: 2 },
+    totalBeds: { general: 120, icu: 20, ventilator: 8 },
+    contact: "+91 891 279 5555",
+    specialties: ["cardiac", "general"]
   },
-
-  // The "Perfect Data, Terrible Location"
   {
     id: "h15",
-    name: "Apex Regional Trauma Center",
-    location: "Highway 44 Junction",
-    distance: 42.0,
-    lastUpdatedMinutes: 1,
-    availableBeds: { general: 80, icu: 15, ventilator: 10 },
-    totalBeds: { general: 400, icu: 50, ventilator: 25 },
-    contact: "+91 98765 43224"
-  },
-
-  // The "Ghost Town" (Data hasn't been updated in 3 days)
-  {
-    id: "h16",
-    name: "Heritage Medical Trust",
-    location: "Old Cantonment",
-    distance: 5.5,
-    lastUpdatedMinutes: 4320, // 3 days
-    availableBeds: { general: 10, icu: 2, ventilator: 1 },
-    totalBeds: { general: 100, icu: 15, ventilator: 5 },
-    contact: "+91 98765 43225"
-  },
-
-  // Micro-Clinics (Only useful for general beds, no ICU)
-  {
-    id: "h17",
-    name: "Family Care Clinic",
-    location: "Residential Block B",
-    distance: 1.1,
-    lastUpdatedMinutes: 10,
-    availableBeds: { general: 3, icu: 0, ventilator: 0 },
-    totalBeds: { general: 10, icu: 0, ventilator: 0 },
-    contact: "+91 98765 43226"
-  },
-  {
-    id: "h18",
-    name: "Nightingale Maternity & General",
-    location: "Garden Layout",
-    distance: 3.4,
-    lastUpdatedMinutes: 22,
-    availableBeds: { general: 12, icu: 0, ventilator: 0 },
-    totalBeds: { general: 30, icu: 2, ventilator: 0 },
-    contact: "+91 98765 43227"
-  },
-
-  // More standard variations to fill out the scatter plot
-  {
-    id: "h19",
-    name: "Pulse Network Hospital",
-    location: "IT Corridor",
-    distance: 7.2,
-    lastUpdatedMinutes: 18,
-    availableBeds: { general: 22, icu: 4, ventilator: 3 },
-    totalBeds: { general: 140, icu: 20, ventilator: 12 },
-    contact: "+91 98765 43228"
-  },
-  {
-    id: "h20",
-    name: "Harmony Healthcare",
-    location: "South Ring",
-    distance: 9.9,
-    lastUpdatedMinutes: 55,
-    availableBeds: { general: 15, icu: 1, ventilator: 0 },
-    totalBeds: { general: 110, icu: 14, ventilator: 8 },
-    contact: "+91 98765 43229"
-  },
-  {
-    id: "h21",
-    name: "Vanguard Medical Group",
-    location: "North Suburbs",
-    distance: 18.5,
-    lastUpdatedMinutes: 14,
-    availableBeds: { general: 65, icu: 12, ventilator: 6 },
-    totalBeds: { general: 320, icu: 45, ventilator: 20 },
-    contact: "+91 98765 43230"
-  },
-  {
-    id: "h22",
-    name: "Zenith Emergency Clinic",
-    location: "Metro Station Road",
-    distance: 2.8,
-    lastUpdatedMinutes: 120, // 2 hours
-    availableBeds: { general: 8, icu: 2, ventilator: 1 },
-    totalBeds: { general: 45, icu: 6, ventilator: 3 },
-    contact: "+91 98765 43231"
-  },
-  {
-    id: "h23",
-    name: "Guardian Angels Hospital",
-    location: "West Point",
-    distance: 6.4,
-    lastUpdatedMinutes: 4,
-    availableBeds: { general: 19, icu: 5, ventilator: 2 },
-    totalBeds: { general: 130, icu: 18, ventilator: 10 },
-    contact: "+91 98765 43232"
-  },
-  {
-    id: "h24",
-    name: "Kalyani Memorial",
-    location: "University Campus",
-    distance: 4.1,
-    lastUpdatedMinutes: 85,
-    availableBeds: { general: 0, icu: 0, ventilator: 1 },
-    totalBeds: { general: 80, icu: 10, ventilator: 5 },
-    contact: "+91 98765 43233"
-  },
-  {
-    id: "h25",
-    name: "Beacon Charitable Hospital",
-    location: "Riverside District",
-    distance: 11.0,
-    lastUpdatedMinutes: 30,
-    availableBeds: { general: 45, icu: 7, ventilator: 4 },
-    totalBeds: { general: 210, icu: 25, ventilator: 15 },
-    contact: "+91 98765 43234"
+    name: "Vizag Government District Hospital",
+    location: "Gajuwaka, Visakhapatnam",
+    lat: 17.6818,
+    lng: 83.2143,
+    distance: 0,
+    lastUpdatedMinutes: 60,
+    availableBeds: { general: 30, icu: 3, ventilator: 1 },
+    totalBeds: { general: 300, icu: 30, ventilator: 10 },
+    contact: "+91 891 258 4100",
+    specialties: ["general", "trauma"]
   }
 ];
 
 export const mockDoctors: Doctor[] = [
   {
     id: "d1",
-    name: "Dr. Ananya Sharma",
+    name: "Dr. Venkata Rao Pasupuleti",
     specialty: "Cardiology",
-    hospitalId: "h4",
-    hospitalName: "Lifeline Super Specialty",
+    hospitalId: "h5",
+    hospitalName: "Appolo Hospitals Visakhapatnam",
     availableToday: true,
     timings: "10:00 AM - 04:00 PM",
     fees: 800,
@@ -338,10 +246,10 @@ export const mockDoctors: Doctor[] = [
   },
   {
     id: "d2",
-    name: "Dr. Rajesh Kumar",
+    name: "Dr. Srinivasa Rao Naidu",
     specialty: "Neurology",
-    hospitalId: "h1",
-    hospitalName: "City General Hospital",
+    hospitalId: "h4",
+    hospitalName: "Seven Hills Hospital",
     availableToday: false,
     timings: "11:00 AM - 02:00 PM",
     fees: 1200,
@@ -349,21 +257,21 @@ export const mockDoctors: Doctor[] = [
   },
   {
     id: "d3",
-    name: "Dr. Sarah Thomas",
+    name: "Dr. Lakshmi Prasanna",
     specialty: "Pediatrics",
-    hospitalId: "h2",
-    hospitalName: "St. Jude's Care Center",
+    hospitalId: "h1",
+    hospitalName: "King George Hospital",
     availableToday: true,
     timings: "09:00 AM - 01:00 PM",
-    fees: 600,
+    fees: 400,
     nextAvailable: "Today, 11:15 AM"
   },
   {
     id: "d4",
-    name: "Dr. Vikram Singh",
+    name: "Dr. Murali Krishna Vadlamudi",
     specialty: "Orthopedics",
-    hospitalId: "h2",
-    hospitalName: "St. Jude's Care Center",
+    hospitalId: "h4",
+    hospitalName: "Seven Hills Hospital",
     availableToday: true,
     timings: "02:00 PM - 07:00 PM",
     fees: 900,
@@ -371,36 +279,35 @@ export const mockDoctors: Doctor[] = [
   },
   {
     id: "d5",
-    name: "Dr. Priya Patel",
+    name: "Dr. Padmaja Reddy",
     specialty: "Cardiology",
-    hospitalId: "h1",
-    hospitalName: "City General Hospital",
+    hospitalId: "h3",
+    hospitalName: "Visakha Institute of Medical Sciences",
     availableToday: true,
     timings: "04:00 PM - 08:00 PM",
     fees: 1000,
     nextAvailable: "Today, 04:30 PM"
   },
-  // --- NEW EDGE CASE DOCTORS ---
   {
     id: "d6",
-    name: "Dr. Amit Verma",
-    specialty: "Cardiology", // Edge: Duplicates d1 and d5 to ensure multiple items render per filter
-    hospitalId: "h4",
-    hospitalName: "Lifeline Super Specialty",
+    name: "Dr. Subrahmanyam Rao",
+    specialty: "Neurology",
+    hospitalId: "h11",
+    hospitalName: "NRI Institute of Medical Sciences",
     availableToday: true,
-    timings: "06:00 PM - 11:00 PM", // Edge: Late night shift
-    fees: 0, // Edge: Free consultation (tests if UI renders 0 correctly instead of failing a truthy check)
+    timings: "06:00 PM - 10:00 PM",
+    fees: 1100,
     nextAvailable: "Today, 06:15 PM"
   },
   {
     id: "d7",
-    name: "Dr. Elena Rostova",
-    specialty: "Oncology", // Edge: Rare specialty, only one in the array
-    hospitalId: "h6",
-    hospitalName: "Pioneer Medical City",
-    availableToday: false, // Edge: Unavailable
+    name: "Dr. Annapurna Devi",
+    specialty: "Oncology",
+    hospitalId: "h5",
+    hospitalName: "Appolo Hospitals Visakhapatnam",
+    availableToday: false,
     timings: "08:00 AM - 12:00 PM",
-    fees: 3500, // Edge: Unusually high fee
-    nextAvailable: "Next Monday, 08:00 AM" // Edge: Long wait time format
+    fees: 1500,
+    nextAvailable: "Next Monday, 08:00 AM"
   }
 ];
